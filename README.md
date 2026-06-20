@@ -1,38 +1,30 @@
-# ga4_ecom_analytics
+# E-commerce Analytics Hub: Пайплайн GA4 & BigQuery
 
-## Overview
+Комплексне аналітичне рішення, яке трансформує сирі логи Google Analytics 4 (GA4) в оптимізовані вітрини даних для інтерактивного дашборду в Tableau Desktop, призначеного для глибокого аналізу маркетингової та продуктової ефективності.
 
-This repository contains the GA4 e-commerce analytics project. It is intended to track, analyze, and report on e-commerce events and conversions using Google Analytics 4.
+## 📊 Огляд проєкту
+Маркетингові та продуктові команди часто стикаються зі «сліпими зонами» у відстеженні конверсій та мають труднощі з оцінкою мультиканального шляху клієнта через стандартний інтерфейс GA4. Цей проєкт поєднує технічну архітектуру даних із комерційною бізнес-логикою e-commerce, реалізуючи надійний пайплайн обробки даних у **Google BigQuery** та візуалізацію інсайтів у **Tableau Desktop**.
 
-## Contents
+## 🛠️ Стек технологій та джерело даних
+* **База даних та хмара:** Google BigQuery / Google Cloud Platform (GCP)
+* **Мова запитів:** SQL (розширені агрегації, CTE-вирази, розгортання масивів / Unnesting)
+* **BI-платформа:** Tableau Desktop
+* **Джерело даних:** Офіційний публічний датасет Google (`ga4_obfuscated_sample_ecommerce`)
 
-- `README.md` — project documentation
+## 💡 Ключова логіка SQL-пайплайну (Back-End)
+SQL-скрипт трансформує рядки сирих подій у єдину плоску таблицю, яка оптимізована для швидких обчислень у BI-системі без перевантаження бази даних:
+* **Реконструкція унікальних сесій:** Оскільки нативні значення `ga_session_id` можуть дублюватися у різних користувачів, було створено 100% унікальний композитний ключ сесії за допомогою `CONCAT(user_pseudo_id, '.', ga_session_id)`.
+* **Усунення прогалин у трекінгу:** Вирішено технічну особливість GA4, через яку маркетингові параметри часто записуються як `NULL` у технічній події `session_start`. Завдяки спільному аналізу подій `session_start` та `page_view`, пайплайн використовує агрегацію `MAX()`, щоб проігнорувати порожні рядки та «витягнути» реальні джерела трафіку з першого перегляду сторінки.
+* **Фільтрація воронки подій:** Набір даних звужено суворо до 7 критичних e-commerce етапів (від `session_start`, переглядів товарів та чекауту до фінальної покупки `purchase`), що дозволило зробити модель даних легкою та продуктивною.
 
-## Getting Started
+## 🖥️ Головний функціонал дашборду Tableau (Front-End)
+Фінальний дашборд забезпечує максимальну гнучкість та можливість деталізації для прийняття рішень на основі даних:
+1. **Аналітика у двох розрізах (Sessions vs. Users):** Глобальний параметричний перемикач, який миттєво перебудовує весь дашборд з аналізу маркетингових сесій на поведінку унікальних користувачів.
+2. **Динамічна панель KPI та трендів:** Інтерактивні блоки метрик із вбудованим перемиканням, які автоматично змінюють лінійний графік для відображення історичної динаміки обраного бізнес-показника.
+3. **Багаторівневий аналіз трафіку (Drill-down):** Ієрархічна візуалізація джерел залучення з можливістю послідовного занурення: від загального джерела (`Source`) до каналу (`Medium`) та конкретної рекламної кампанії (`Campaign`).
+4. **Матриця кросканального шляху клієнта:** Крос-таблиця взаємодії First-Touch та Last-Touch джерел, яка відображає траєкторію користувача від моменту знайомства до покупки з автоматичним розрахунком середньої кількості дотиків (сесій) до конверсії.
+5. **Теплова карта ефективності посадкових сторінок:** Розгорнута таблиця аудиту контенту сайту з інтегрованими хитмепами на рівні клітинок за всіма основними KPI для швидкого пошуку сторінок із високим трафіком, але низькою конверсією.
 
-1. Clone the repository:
-   ```bash
-   git clone https://github.com/<your-org>/ga4_ecom_analytics.git
-   ```
-2. Open the project in your preferred editor.
-
-## Purpose
-
-Use this project as a starting point for building GA4 e-commerce analytics implementations, event tracking plans, and reporting dashboards.
-
-## Notes
-
-- Add your GA4 configuration, tracking code, or analytics scripts as needed.
-- Extend the repository with scripts, dashboards, or tracking documentation relevant to your implementation.
-
-## SQL Query
-
-- **File:** [ga4_ecom_query.sql](ga4_ecom_query.sql#L1-L48)
-- **Purpose:** Извлечь информацию о сессиях и связанных с ними событиях электронной торговли (просмотры товаров, добавления в корзину, оформление заказа, покупки) и объединить их с данными о транзакциях и доходах.
-- **Источник данных:** `bigquery-public-data.ga4_obfuscated_sample_ecommerce.events_*` (BigQuery public dataset).
-- **Логика:**
-   - `sessions_info`: собирает агрегированную информацию по сессии (дата сессии, `user_id`, `user_session_id`, номер сессии, посадочная страница, устройство, ОС, язык, источник/medium/campaign). Для извлечения источника используется параметр `entrances` из `page_view`, если в `session_start` он отсутствует.
-   - `events`: выбирает временные метки событий, названия событий и данные электронной торговли (transaction_id, revenue) для набора ключевых событий (включая `purchase`).
-   - Финальный `SELECT`: объединяет `sessions_info` и `events` по `user_session_id` и возвращает строки с деталями сессии и соответствующими событиями и доходом.
-- **Выходные колонки (основные):** `session_date`, `user_id`, `user_session_id`, `ga_session_number`, `landing_page`, `device`, `OS`, `device_language`, `session_source`, `session_medium`, `session_campaign`, `first_source`, `first_medium`, `first_campaign`, `event_timestamp`, `event_name`, `transaction_id`, `revenue`.
-- **Примечания:** Запрос написан для выполнения в BigQuery; при адаптации под вашу таблицу замените источник данных и, при необходимости, имена полей.
+## 🔗 Результати проєкту
+* 💻 **SQL-скрипт:** [Переглянути повний код запиту](./ga4_ecom_analytics.sql)
+* 📊 **Інтерактивний дашборд Tableau Public:** [Посилання на дашборд](https://public.tableau.com/views/finalprojectprod/Dashboard1?:language=en-US&:sid=&:display_count=n&:origin=viz_share_link)
